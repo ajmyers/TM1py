@@ -1,7 +1,6 @@
 import collections
 import json
 import sys
-import pandas as pd
 
 from TM1py.Objects.Server import Server
 from TM1py.Objects.Process import Process
@@ -296,51 +295,6 @@ def build_element_unique_names(dimension_names, element_names, hierarchy_names=N
         return ("[{}].[{}].[{}]".format(dim, hier, elem)
                 for dim, hier, elem
                 in zip(dimension_names, hierarchy_names, element_names))
-
-
-def build_pandas_dataframe_from_cellset(cellset, multiindex=True, sort_values=True):
-    """
-    
-    :param cellset: 
-    :param multiindex: True or False
-    :param sort_values: Boolean to control sorting in result DataFrame
-    :return: 
-    """
-    cellset_clean = {}
-    for coordinates, cell in cellset.items():
-        element_names = element_names_from_element_unqiue_names(coordinates)
-        cellset_clean[element_names] = cell['Value'] if cell else None
-
-    dimension_names = tuple([unique_name[1:unique_name.find('].[')] for unique_name in coordinates])
-
-    # create index
-    keylist = list(cellset_clean.keys())
-    index = pd.MultiIndex.from_tuples(keylist, names=dimension_names)
-
-    # create DataFrame
-    values = list(cellset_clean.values())
-    df = pd.DataFrame(values, index=index, columns=["Values"])
-
-    if not multiindex:
-        df.reset_index(inplace=True)
-        if sort_values:
-            df.sort_values(inplace=True, by=list(dimension_names))
-    return df
-
-
-def build_cellset_from_pandas_dataframe(df):
-    """
-    
-    :param df: a Pandas Dataframe, with dimension-column mapping in correct order. As created in build_pandas_dataframe_from_cellset
-    :return: a CaseAndSpaceInsensitiveTuplesDict
-    """
-    if isinstance(df.index, pd.MultiIndex):
-        df.reset_index(inplace=True)
-    cellset = CaseAndSpaceInsensitiveTuplesDict()
-    split = df.to_dict(orient='split')
-    for row in split['data']:
-        cellset[tuple(row[0:-1])] = row[-1]
-    return cellset
 
 
 def load_bedrock_from_github(bedrock_process_name):

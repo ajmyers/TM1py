@@ -5,7 +5,6 @@ import functools
 import json
 from io import StringIO
 import warnings
-import pandas as pd
 
 from TM1py.Utils import Utils
 
@@ -278,34 +277,6 @@ class CellService:
     def execute_view_csv(self, cube_name, view_name, private=True):
         cellset_id = self.create_cellset_from_view(cube_name=cube_name, view_name=view_name, private=private)
         return self.extract_cellset_csv(cellset_id=cellset_id)
-
-    def execute_mdx_dataframe(self, mdx):
-        """ Optimized for performance. Get Pandas DataFrame from MDX Query. 
-        Context dimensions are omitted in the resulting Dataframe !
-        Cells with Zero/null are omitted !
-
-        :param mdx: Valid MDX Query
-        :return: Pandas Dataframe
-        """
-        cellset_id = self.create_cellset(mdx)
-        raw_csv = self.extract_cellset_csv(cellset_id)
-        memory_file = StringIO(raw_csv)
-        return pd.read_csv(memory_file, sep=',')
-
-    def execute_view_dataframe(self, cube_name, view_name, private=True):
-        """ Optimized for performance. Get Pandas DataFrame from an existing Cube View 
-        Context dimensions are omitted in the resulting Dataframe !
-        Cells with Zero/null are omitted !
-        
-        :param cube_name: Name of the 
-        :param view_name: 
-        :param private: 
-        :return: 
-        """
-        cellset_id = self.create_cellset_from_view(cube_name=cube_name, view_name=view_name, private=private)
-        raw_csv = self.extract_cellset_csv(cellset_id)
-        memory_file = StringIO(raw_csv)
-        return pd.read_csv(memory_file, sep=',')
 
     def execute_mdx_cellcount(self, mdx):
         """ Execute MDX in order to understand how many cells are in a cellset.
