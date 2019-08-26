@@ -6,11 +6,8 @@ import json
 import warnings
 from io import StringIO
 
-import pandas as pd
-
 from TM1py.Utils import Utils
-from TM1py.Utils.Utils import build_pandas_dataframe_from_cellset, dimension_name_from_element_unique_name, \
-    CaseAndSpaceInsensitiveTuplesDict
+from TM1py.Utils.Utils import dimension_name_from_element_unique_name, CaseAndSpaceInsensitiveTuplesDict
 
 
 def tidy_cellset(func):
@@ -357,19 +354,6 @@ class CellService:
         cellset_id = self.create_cellset_from_view(cube_name=cube_name, view_name=view_name, private=private)
         return self.extract_cellset_csv(cellset_id=cellset_id, delete_cellset=True)
 
-    def execute_mdx_dataframe(self, mdx):
-        """ Optimized for performance. Get Pandas DataFrame from MDX Query.
-        Context dimensions are omitted in the resulting Dataframe !
-        Cells with Zero/null are omitted !
-
-        :param mdx: Valid MDX Query
-        :return: Pandas Dataframe
-        """
-        cellset_id = self.create_cellset(mdx)
-        raw_csv = self.extract_cellset_csv(cellset_id=cellset_id, delete_cellset=True)
-        memory_file = StringIO(raw_csv)
-        return pd.read_csv(memory_file, sep=',')
-
     def execute_view_dataframe_pivot(self, cube_name, view_name, private=False, dropna=False, fill_value=None):
         """ Execute a cube view to get a pandas pivot dataframe, in the shape of the cube view
 
@@ -399,21 +383,6 @@ class CellService:
             cellset_id=cellset_id,
             dropna=dropna,
             fill_value=fill_value)
-
-    def execute_view_dataframe(self, cube_name, view_name, private=True):
-        """ Optimized for performance. Get Pandas DataFrame from an existing Cube View
-        Context dimensions are omitted in the resulting Dataframe !
-        Cells with Zero/null are omitted !
-
-        :param cube_name: Name of the
-        :param view_name:
-        :param private:
-        :return:
-        """
-        cellset_id = self.create_cellset_from_view(cube_name=cube_name, view_name=view_name, private=private)
-        raw_csv = self.extract_cellset_csv(cellset_id)
-        memory_file = StringIO(raw_csv)
-        return pd.read_csv(memory_file, sep=',')
 
     def execute_mdx_cellcount(self, mdx):
         """ Execute MDX in order to understand how many cells are in a cellset.
@@ -755,34 +724,6 @@ class CellService:
         request = "/api/v1/Cellsets('{}')/Content".format(cellset_id)
         data = self._rest.GET(request)
         return data.text
-
-    def extract_cellset_dataframe_pivot(self, cellset_id, dropna=False, fill_value=False, **kwargs):
-        """ Extract a pivot table (pandas dataframe) from a cellset in TM1
-
-        :param cellset_id:
-        :param dropna:
-        :param fill_value:
-        :param kwargs:
-        :return:
-        """
-        data = self.extract_cellset(
-            cellset_id=cellset_id,
-            delete_cellset=False)
-
-        cube, titles, rows, columns = self.extract_cellset_composition(
-            cellset_id=cellset_id,
-            delete_cellset=True)
-
-        df = build_pandas_dataframe_from_cellset(data, multiindex=False)
-        return pd.pivot_table(
-            data=df,
-            index=[dimension_name_from_element_unique_name(hierarchy_unique_name) for hierarchy_unique_name in rows],
-            columns=[dimension_name_from_element_unique_name(hierarchy_unique_name) for hierarchy_unique_name in
-                     columns],
-            values=["Values"],
-            dropna=dropna,
-            fill_value=fill_value,
-            aggfunc='sum')
 
     def extract_cellset(
             self,

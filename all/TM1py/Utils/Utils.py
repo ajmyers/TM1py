@@ -3,8 +3,6 @@ import json
 import sys
 import warnings
 
-import pandas as pd
-
 from TM1py.Objects.Process import Process
 from TM1py.Objects.Server import Server
 
@@ -107,8 +105,8 @@ def build_ui_arrays_from_cellset(raw_cellset_as_dict, value_precision):
     * Returns 3-dimensional cell structure for tabbed grids or multiple charts
     * Rows and pages are dicts, addressable by their name. Proper order of rows can be obtained in headers[1]
     * Example 'cells' return format:
-        'cells': { 
-            '10100': { 
+        'cells': {
+            '10100': {
                 'Net Operating Income': [ 19832724.72429739,
                                           20365654.788303416,
                                           20729201.329183243,
@@ -117,7 +115,7 @@ def build_ui_arrays_from_cellset(raw_cellset_as_dict, value_precision):
                              29512482.207418434,
                              29913730.038971487,
                              29563345.9542385]},
-            '10200': { 
+            '10200': {
                 'Net Operating Income': [ 9853293.623709997,
                                            10277650.763958748,
                                            10466934.096533755,
@@ -167,19 +165,19 @@ def build_ui_dygraph_arrays_from_cellset(raw_cellset_as_dict, value_precision=No
     * Useful for grids or charting libraries that want an array of cell values per column
     * Returns 3-dimensional cell structure for tabbed grids or multiple charts
     * Example 'cells' return format:
-        'cells': { 
-            '10100': [ 
+        'cells': {
+            '10100': [
                 ['Q1-2004', 28981046.50724231, 19832724.72429739],
                 ['Q2-2004', 29512482.207418434, 20365654.788303416],
                 ['Q3-2004', 29913730.038971487, 20729201.329183243],
                 ['Q4-2004', 29563345.9542385, 20480205.20121749]],
-            '10200': [ 
+            '10200': [
                 ['Q1-2004', 13888143.710000003, 9853293.623709997],
                 ['Q2-2004', 14300216.43, 10277650.763958748],
                 ['Q3-2004', 14502421.63, 10466934.096533755],
                 ['Q4-2004', 14321501.940000001, 10333095.839474997]]
         },
-    
+
     :param raw_cellset_as_dict: raw data from TM1
     :param value_precision: Integer (optional) specifying number of decimal places to return
     :return: dict : { titles: [], headers: [axis][], cells: { Page0: [  [column name, column values], [], ... ], ...} }
@@ -214,7 +212,7 @@ def build_ui_dygraph_arrays_from_cellset(raw_cellset_as_dict, value_precision=No
 
 def build_headers_from_cellset(raw_cellset_as_dict, force_header_dimensionality=1):
     """ Extract dimension headers from cellset into dictionary of titles (slicers) and headers (row,column,page)
-    * Title dimensions are in a single list of dicts 
+    * Title dimensions are in a single list of dicts
     * Header dimensions are a 2-dimensional list of the element dicts
 
       * The first dimension in the header list is the axis
@@ -264,7 +262,7 @@ def build_headers_from_cellset(raw_cellset_as_dict, force_header_dimensionality=
 
 def element_names_from_element_unqiue_names(element_unique_names):
     """ Get tuple of simple element names from the full element unique names
-    
+
     :param element_unique_names: tuple of element unique names ([dim1].[hier1].[elem1], ... )
     :return: tuple of element names: (elem1, elem2, ... )
     """
@@ -317,10 +315,10 @@ def element_names_from_element_unique_names(element_unique_names):
 
 def build_element_unique_names(dimension_names, element_names, hierarchy_names=None):
     """ Create tuple of unique names from dimension, hierarchy and elements
-    
-    :param dimension_names: 
-    :param element_names: 
-    :param hierarchy_names: 
+
+    :param dimension_names:
+    :param element_names:
+    :param hierarchy_names:
     :return: Generator
     """
     if not hierarchy_names:
@@ -333,62 +331,11 @@ def build_element_unique_names(dimension_names, element_names, hierarchy_names=N
                 in zip(dimension_names, hierarchy_names, element_names))
 
 
-def build_pandas_dataframe_from_cellset(cellset, multiindex=True, sort_values=True):
-    """
-    
-    :param cellset: 
-    :param multiindex: True or False
-    :param sort_values: Boolean to control sorting in result DataFrame
-    :return: 
-    """
-    try:
-        cellset_clean = {}
-        for coordinates, cell in cellset.items():
-            element_names = element_names_from_element_unique_names(coordinates)
-            cellset_clean[element_names] = cell['Value'] if cell else None
-        dimension_names = tuple(unique_name[1:unique_name.find('].[')] for unique_name in coordinates)
-
-        # create index
-        keylist = list(cellset_clean.keys())
-        index = pd.MultiIndex.from_tuples(keylist, names=dimension_names)
-
-        # create DataFrame
-        values = list(cellset_clean.values())
-        df = pd.DataFrame(values, index=index, columns=["Values"])
-
-        if not multiindex:
-            df.reset_index(inplace=True)
-            if sort_values:
-                df.sort_values(inplace=True, by=list(dimension_names))
-        return df
-    except UnboundLocalError:
-        message = """
-            Can't build DataFrame from empty cellset. 
-            Make sure the underlying MDX / View is not fully zero suppressed.
-        """
-        raise ValueError(message)
-
-
-def build_cellset_from_pandas_dataframe(df):
-    """
-    
-    :param df: a Pandas Dataframe, with dimension-column mapping in correct order. As created in build_pandas_dataframe_from_cellset
-    :return: a CaseAndSpaceInsensitiveTuplesDict
-    """
-    if isinstance(df.index, pd.MultiIndex):
-        df.reset_index(inplace=True)
-    cellset = CaseAndSpaceInsensitiveTuplesDict()
-    split = df.to_dict(orient='split')
-    for row in split['data']:
-        cellset[tuple(row[0:-1])] = row[-1]
-    return cellset
-
-
 def load_bedrock_from_github(bedrock_process_name):
     """ Load bedrock from GitHub as TM1py.Process instance
-    
+
     :param bedrock_process_name:
-    :return: 
+    :return:
     """
     import requests
     url = 'https://raw.githubusercontent.com/MariusWirtz/bedrock/master/json/{}.json'.format(bedrock_process_name)
@@ -398,8 +345,8 @@ def load_bedrock_from_github(bedrock_process_name):
 
 def load_all_bedrocks_from_github():
     """ Load all Bedrocks from GitHub as TM1py.Process instances
-    
-    :return: 
+
+    :return:
     """
     import requests
     # Connect to Bedrock github repo and load the names of all Bedrocks
@@ -425,7 +372,7 @@ class CaseAndSpaceInsensitiveDict(collections.MutableMapping):
     All keys are expected to be strings. The structure remembers the
     case of the last key to be set, and ``iter(instance)``,
     ``keys()``, ``items()``, ``iterkeys()``, and ``iteritems()``
-    will contain case-sensitive keys. 
+    will contain case-sensitive keys.
 
     However, querying and contains testing is case insensitive:
         elements = TM1pyElementsDictionary()
@@ -500,7 +447,7 @@ class CaseAndSpaceInsensitiveTuplesDict(collections.MutableMapping):
     All keys are expected to be tuples of strings. The structure remembers the
     case of the last key to be set, and ``iter(instance)``,
     ``keys()``, ``items()``, ``iterkeys()``, and ``iteritems()``
-    will contain case-sensitive keys. 
+    will contain case-sensitive keys.
 
     However, querying and contains testing is case insensitive:
         data = CaseAndSpaceInsensitiveTuplesDict()
