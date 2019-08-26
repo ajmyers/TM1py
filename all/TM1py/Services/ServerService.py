@@ -3,8 +3,6 @@
 import functools
 import json
 
-import pytz
-
 from TM1py.Services.ObjectService import ObjectService
 
 
@@ -96,12 +94,13 @@ class ServerService(ObjectService):
             if cube:
                 log_filters.append("Cube eq '{}'".format(cube))
             if since:
-                # If since doesn't have tz information, UTC is assumed
-                if not since.tzinfo:
-                    since = pytz.utc.localize(since)
-                # TM1 REST API expects %Y-%m-%dT%H:%M:%SZ Format with UTC time !
-                since_utc = since.astimezone(pytz.utc)
-                log_filters.append("TimeStamp ge {}".format(since_utc.strftime("%Y-%m-%dT%H:%M:%SZ")))
+                pass
+                # # If since doesn't have tz information, UTC is assumed
+                # if not since.tzinfo:
+                #     since = pytz.utc.localize(since)
+                # # TM1 REST API expects %Y-%m-%dT%H:%M:%SZ Format with UTC time !
+                # since_utc = since.astimezone(pytz.utc)
+                # log_filters.append("TimeStamp ge {}".format(since_utc.strftime("%Y-%m-%dT%H:%M:%SZ")))
             request += "&$filter={}".format(" and ".join(log_filters))
         # top limit
         if top:
