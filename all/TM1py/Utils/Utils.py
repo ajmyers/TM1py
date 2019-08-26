@@ -1,9 +1,12 @@
 import collections
 import json
 import sys
+import warnings
 
-from TM1py.Objects.Server import Server
+import pandas as pd
+
 from TM1py.Objects.Process import Process
+from TM1py.Objects.Server import Server
 
 if sys.version[0] == '2':
     import httplib as http_client
@@ -30,23 +33,43 @@ def get_all_servers_from_adminhost(adminhost='localhost'):
     return servers
 
 
-def sort_addresstuple(cube_dimensions, unsorted_addresstuple):
-    """ Sort the given mixed up addresstuple
+def case_and_space_insensitive_equals(item1, item2):
+    return lower_and_drop_spaces(item1) == lower_and_drop_spaces(item2)
 
-    :param cube_dimensions: list of dimension names in correct order
-    :param unsorted_addresstuple: list of Strings - ['[dim2].[elem4]','[dim1].[elem2]',...]
 
-    :return:
-        Tuple: ('[dim1].[elem2]','[dim2].[elem4]',...)
+def extract_axes_from_cellset(raw_cellset_as_dict):
+    axes = raw_cellset_as_dict['Axes']
+    row_axis = axes[0] if axes[0] and "Tuples" in axes[0] and len(axes[0]["Tuples"]) > 0 else None
+    column_axis = axes[1] if axes[1] and "Tuples" in axes[1] and len(axes[1]["Tuples"]) > 0 else None
+    title_axis = axes[2] if len(axes) > 2 and axes[2] and "Tuples" in axes[2] and len(axes[2]["Tuples"]) > 0 else None
+    return row_axis, column_axis, title_axis
+
+
+def extract_unique_names_from_members(members):
+    """ Extract list of unique names from part of the cellset response
+    in:
+    [{'UniqueName': '[dim1].[dim1].[elem1]', 'Element': {'UniqueName': '[dim1].[dim1].[elem1]'}},
+    {'UniqueName': '[dim2].[dim2].[elem3]', 'Element': {'UniqueName': '[dim2].[dim2].[elem3]'}}]
+    out:
+    ["[dim1].[dim1].[elem1]", "[dim2].[dim2].[elem3]"]
+
+    :param members: dictionary
+    :return: list of unique names
     """
-    sorted_addresstupple = []
+    return [m['Element']['UniqueName'] if 'Element' in m and m['Element'] else m['UniqueName']
+            for m
+            in members]
+
+
+def sort_coordinates(cube_dimensions, unsorted_coordinates):
+    sorted_coordinates = []
     for dimension in cube_dimensions:
         # could be more than one hierarchy!
-        address_elements = [item for item in unsorted_addresstuple if item.startswith('[' + dimension + '].')]
+        address_elements = [item for item in unsorted_coordinates if item.startswith('[' + dimension + '].')]
         # address_elements could be ( [dim1].[hier1].[elem1], [dim1].[hier2].[elem3] )
         for address_element in address_elements:
-            sorted_addresstupple.append(address_element)
-    return tuple(sorted_addresstupple)
+            sorted_coordinates.append(address_element)
+    return tuple(sorted_coordinates)
 
 
 def build_content_from_cellset(raw_cellset_as_dict, top=None):
@@ -56,53 +79,24 @@ def build_content_from_cellset(raw_cellset_as_dict, top=None):
     :param top: Maximum Number of cells
     :return:
     """
-    content_as_dict = CaseAndSpaceInsensitiveTuplesDict()
-
     cube_dimensions = [dim['Name'] for dim in raw_cellset_as_dict['Cube']['Dimensions']]
 
-    axe0_as_dict = raw_cellset_as_dict['Axes'][0]
-    axe1_as_dict = raw_cellset_as_dict['Axes'][1]
+    cells = raw_cellset_as_dict['Cells']
+    row_axis, column_axis, title_axis = extract_axes_from_cellset(raw_cellset_as_dict=raw_cellset_as_dict)
 
-    ordinal_cells = 0
-
-    ordinal_axe2 = 0
-    # get coordinates on axe 2: Title
-    # if there are no elements on axe 2 assign empty list to elements_on_axe2
-    if len(raw_cellset_as_dict['Axes']) > 2:
-        axe2_as_dict = raw_cellset_as_dict['Axes'][2]
-        tuples_as_dict = axe2_as_dict['Tuples'][ordinal_axe2]['Members']
-        # condition for MDX Calculated Members (WITH MEMBER AS), that have no underlying Element
-        elements_on_axe2 = [member['Element']['UniqueName'] if member['Element'] else member['UniqueName']
-                            for member
-                            in tuples_as_dict]
-    else:
-        elements_on_axe2 = []
-
-    ordinal_axe1 = 0
-    for i in range(axe1_as_dict['Cardinality']):
-        # get coordinates on axe 1: Rows
-        tuples_as_dict = axe1_as_dict['Tuples'][ordinal_axe1]['Members']
-        elements_on_axe1 = [member['Element']['UniqueName'] if member['Element'] else member['UniqueName']
-                            for member
-                            in tuples_as_dict]
-        ordinal_axe0 = 0
-        for j in range(axe0_as_dict['Cardinality']):
-            # get coordinates on axe 0: Columns
-            tuples_as_dict = axe0_as_dict['Tuples'][ordinal_axe0]['Members']
-            elements_on_axe0 = [member['Element']['UniqueName'] if member['Element'] else member['UniqueName']
-                                for member
-                                in tuples_as_dict]
-            coordinates = elements_on_axe0 + elements_on_axe2 + elements_on_axe1
-            coordinates_sorted = sort_addresstuple(cube_dimensions, coordinates)
-            # get cell properties
-            content_as_dict[coordinates_sorted] = raw_cellset_as_dict['Cells'][ordinal_cells]
-            ordinal_axe0 += 1
-            ordinal_cells += 1
-            if top is not None and ordinal_cells >= top:
-                break
-        if top is not None and ordinal_cells >= top:
-            break
-        ordinal_axe1 += 1
+    content_as_dict = CaseAndSpaceInsensitiveTuplesDict()
+    for ordinal, cell in enumerate(cells[:top or len(cells)]):
+        coordinates = []
+        if row_axis:
+            index_rows = ordinal // row_axis['Cardinality'] % column_axis['Cardinality']
+            coordinates.extend(extract_unique_names_from_members(column_axis['Tuples'][index_rows]['Members']))
+        if title_axis:
+            coordinates.extend(extract_unique_names_from_members(title_axis['Tuples'][0]['Members']))
+        if column_axis:
+            index_columns = ordinal % row_axis['Cardinality']
+            coordinates.extend(extract_unique_names_from_members(row_axis['Tuples'][index_columns]['Members']))
+        coordinates = sort_coordinates(cube_dimensions, coordinates)
+        content_as_dict[coordinates] = cell
     return content_as_dict
 
 
@@ -150,10 +144,10 @@ def build_ui_arrays_from_cellset(raw_cellset_as_dict, value_precision):
     cells = {}
     ordinal_cells = 0
     for z in range(cardinality[2]):
-        zHeader = headers[2][z]['name']
+        z_header = headers[2][z]['name']
         pages = {}
         for y in range(cardinality[1]):
-            yHeader = headers[1][y]['name']
+            y_header = headers[1][y]['name']
             row = []
             for x in range(cardinality[0]):
                 raw_value = raw_cellset_as_dict['Cells'][ordinal_cells]['Value'] or 0
@@ -162,8 +156,8 @@ def build_ui_arrays_from_cellset(raw_cellset_as_dict, value_precision):
                 else:
                     row.append(raw_value)
                 ordinal_cells += 1
-            pages[yHeader] = row
-        cells[zHeader] = pages
+            pages[y_header] = row
+        cells[z_header] = pages
     return {'titles': titles, 'headers': headers, 'cells': cells}
 
 
@@ -200,11 +194,11 @@ def build_ui_dygraph_arrays_from_cellset(raw_cellset_as_dict, value_precision=No
 
     cells = {}
     for z in range(cardinality[2]):
-        zHeader = headers[2][z]['name']
+        z_header = headers[2][z]['name']
         page = []
         for x in range(cardinality[0]):
-            xHeader = headers[0][x]['name']
-            row = [xHeader]
+            x_header = headers[0][x]['name']
+            row = [x_header]
             for y in range(cardinality[1]):
                 cell_addr = (x + cardinality[0] * y + cardinality[0] * cardinality[1] * z)
                 raw_value = raw_cellset_as_dict['Cells'][cell_addr]['Value'] or 0
@@ -213,9 +207,10 @@ def build_ui_dygraph_arrays_from_cellset(raw_cellset_as_dict, value_precision=No
                 else:
                     row.append(raw_value)
             page.append(row)
-        cells[zHeader] = page
+        cells[z_header] = page
 
-    return {'titles':titles, 'headers':headers, 'cells':cells}
+    return {'titles': titles, 'headers': headers, 'cells': cells}
+
 
 def build_headers_from_cellset(raw_cellset_as_dict, force_header_dimensionality=1):
     """ Extract dimension headers from cellset into dictionary of titles (slicers) and headers (row,column,page)
@@ -244,28 +239,27 @@ def build_headers_from_cellset(raw_cellset_as_dict, force_header_dimensionality=
         for tindex in range(cardinality[axis]):
             tuples_as_dict = raw_cellset_as_dict['Axes'][axis]['Tuples'][tindex]['Members']
             name = ' / '.join(tuple(member['Name'] for member in tuples_as_dict))
-            members.append({'name': name, 'members':tuples_as_dict})
+            members.append({'name': name, 'members': tuples_as_dict})
 
-        if (axis == dimensionality -1 and cardinality[axis] == 1):
+        if axis == dimensionality - 1 and cardinality[axis] == 1:
             titles = members
         else:
             headers.append(members)
-
 
     dimensionality = len(headers)
     cardinality = [len(headers[axis]) for axis in range(dimensionality)]
 
     # Handle 1, 2 and 3-dimensional cellsets. Use dummy row/page headers when missing
     if dimensionality == 1 and force_header_dimensionality > 1:
-        headers += [[{'name':'Row'}]]
-        cardinality.insert(1,1)
+        headers += [[{'name': 'Row'}]]
+        cardinality.insert(1, 1)
         dimensionality += 1
     if dimensionality == 2 and force_header_dimensionality > 2:
-        headers += [[{'name':'Page'}]]
-        cardinality.insert(2,1)
+        headers += [[{'name': 'Page'}]]
+        cardinality.insert(2, 1)
         dimensionality += 1
 
-    return {'titles':titles, 'headers':headers, 'dimensionality':dimensionality, 'cardinality':cardinality}
+    return {'titles': titles, 'headers': headers, 'dimensionality': dimensionality, 'cardinality': cardinality}
 
 
 def element_names_from_element_unqiue_names(element_unique_names):
@@ -274,9 +268,51 @@ def element_names_from_element_unqiue_names(element_unique_names):
     :param element_unique_names: tuple of element unique names ([dim1].[hier1].[elem1], ... )
     :return: tuple of element names: (elem1, elem2, ... )
     """
-    return tuple([unique_name[unique_name.rfind('].[') + 3:-1]
-                  for unique_name
-                  in element_unique_names])
+    warnings.simplefilter('always', PendingDeprecationWarning)
+    warnings.warn(
+        "Function deprecated and will be removed. Use element_names_from_element_unique_names instead.",
+        PendingDeprecationWarning
+    )
+    warnings.simplefilter('default', PendingDeprecationWarning)
+    return element_names_from_element_unique_names(element_unique_names)
+
+
+def dimension_hierarchy_element_tuple_from_unique_name(element_unique_name):
+    """ Extract dimension name, hierarchy name and element name from element unique name.
+    Works with explicit and implicit hierarchy references.
+
+    :param element_unique_name: e.g. [d1].[e1] or [d1].[leaves].[e1]
+    :return: tuple of dimension name, hierarchy name, element name
+    """
+    dimension = dimension_name_from_element_unique_name(element_unique_name)
+    element = element_name_from_element_unique_name(element_unique_name)
+    if element_unique_name.count("].[") == 1:
+        return dimension, dimension, element
+    hierarchy = hierarchy_name_from_element_unique_name(element_unique_name)
+    return dimension, hierarchy, element
+
+
+def dimension_name_from_element_unique_name(element_unique_name):
+    return element_unique_name[1:element_unique_name.find('].[')]
+
+
+def hierarchy_name_from_element_unique_name(element_unique_name):
+    return element_unique_name[element_unique_name.find('].[') + 3:element_unique_name.rfind('].[')]
+
+
+def element_name_from_element_unique_name(element_unique_name):
+    return element_unique_name[element_unique_name.rfind('].[') + 3:-1]
+
+
+def element_names_from_element_unique_names(element_unique_names):
+    """ Get tuple of simple element names from the full element unique names
+
+    :param element_unique_names: tuple of element unique names ([dim1].[hier1].[elem1], ... )
+    :return: tuple of element names: (elem1, elem2, ... )
+    """
+    return tuple(element_name_from_element_unique_name(unique_name)
+                 for unique_name
+                 in element_unique_names)
 
 
 def build_element_unique_names(dimension_names, element_names, hierarchy_names=None):
@@ -297,10 +333,61 @@ def build_element_unique_names(dimension_names, element_names, hierarchy_names=N
                 in zip(dimension_names, hierarchy_names, element_names))
 
 
+def build_pandas_dataframe_from_cellset(cellset, multiindex=True, sort_values=True):
+    """
+    
+    :param cellset: 
+    :param multiindex: True or False
+    :param sort_values: Boolean to control sorting in result DataFrame
+    :return: 
+    """
+    try:
+        cellset_clean = {}
+        for coordinates, cell in cellset.items():
+            element_names = element_names_from_element_unique_names(coordinates)
+            cellset_clean[element_names] = cell['Value'] if cell else None
+        dimension_names = tuple(unique_name[1:unique_name.find('].[')] for unique_name in coordinates)
+
+        # create index
+        keylist = list(cellset_clean.keys())
+        index = pd.MultiIndex.from_tuples(keylist, names=dimension_names)
+
+        # create DataFrame
+        values = list(cellset_clean.values())
+        df = pd.DataFrame(values, index=index, columns=["Values"])
+
+        if not multiindex:
+            df.reset_index(inplace=True)
+            if sort_values:
+                df.sort_values(inplace=True, by=list(dimension_names))
+        return df
+    except UnboundLocalError:
+        message = """
+            Can't build DataFrame from empty cellset. 
+            Make sure the underlying MDX / View is not fully zero suppressed.
+        """
+        raise ValueError(message)
+
+
+def build_cellset_from_pandas_dataframe(df):
+    """
+    
+    :param df: a Pandas Dataframe, with dimension-column mapping in correct order. As created in build_pandas_dataframe_from_cellset
+    :return: a CaseAndSpaceInsensitiveTuplesDict
+    """
+    if isinstance(df.index, pd.MultiIndex):
+        df.reset_index(inplace=True)
+    cellset = CaseAndSpaceInsensitiveTuplesDict()
+    split = df.to_dict(orient='split')
+    for row in split['data']:
+        cellset[tuple(row[0:-1])] = row[-1]
+    return cellset
+
+
 def load_bedrock_from_github(bedrock_process_name):
     """ Load bedrock from GitHub as TM1py.Process instance
     
-    :param name_bedrock_process: 
+    :param bedrock_process_name:
     :return: 
     """
     import requests
@@ -322,6 +409,10 @@ def load_all_bedrocks_from_github():
     # instantiate TM1py.Process instances from github-json content
     url_to_bedrock = 'https://raw.githubusercontent.com/MariusWirtz/bedrock/master/json/{}'
     return [Process.from_json(requests.get(url_to_bedrock.format(bedrock)).text) for bedrock in all_bedrocks]
+
+
+def lower_and_drop_spaces(item):
+    return item.replace(" ", "").lower()
 
 
 class CaseAndSpaceInsensitiveDict(collections.MutableMapping):
@@ -353,13 +444,13 @@ class CaseAndSpaceInsensitiveDict(collections.MutableMapping):
     def __setitem__(self, key, value):
         # Use the adjusted cased key for lookups, but store the actual
         # key alongside the value.
-        self._store[key.lower().replace(' ', '')] = (key, value)
+        self._store[lower_and_drop_spaces(key)] = (key, value)
 
     def __getitem__(self, key):
-        return self._store[key.lower().replace(' ', '')][1]
+        return self._store[lower_and_drop_spaces(key)][1]
 
     def __delitem__(self, key):
-        del self._store[key.lower().replace(' ', '')]
+        del self._store[lower_and_drop_spaces(key)]
 
     def __iter__(self):
         return (casedkey for casedkey, mappedvalue in self._store.values())
@@ -429,13 +520,13 @@ class CaseAndSpaceInsensitiveTuplesDict(collections.MutableMapping):
     def __setitem__(self, key, value):
         # Use the adjusted cased key for lookups, but store the actual
         # key alongside the value.
-        self._store[tuple([item.lower().replace(' ', '') for item in key])] = (key, value)
+        self._store[tuple([lower_and_drop_spaces(item) for item in key])] = (key, value)
 
     def __getitem__(self, key):
-        return self._store[tuple([item.lower().replace(' ', '') for item in key])][1]
+        return self._store[tuple([lower_and_drop_spaces(item) for item in key])][1]
 
     def __delitem__(self, key):
-        del self._store[tuple([item.lower().replace(' ', '') for item in key])]
+        del self._store[tuple([lower_and_drop_spaces(item) for item in key])]
 
     def __iter__(self):
         return (casedkey for casedkey, mappedvalue in self._store.values())
@@ -473,3 +564,45 @@ class CaseAndSpaceInsensitiveTuplesDict(collections.MutableMapping):
 
     def __repr__(self):
         return str(dict(self.items()))
+
+
+class CaseAndSpaceInsensitiveSet(collections.MutableSet):
+    def __init__(self, *values):
+        self._store = {}
+        for v in values:
+            self.add(v)
+
+    def __contains__(self, value):
+        return value.lower().replace(" ", "") in self._store
+
+    def __delitem__(self, key):
+        del self._store[key.lower().replace(" ", "")]
+
+    def __iter__(self):
+        return iter(self._store.values())
+
+    def __len__(self):
+        return len(self._store)
+
+    def add(self, value):
+        self._store[value.lower().replace(" ", "")] = value
+
+    def discard(self, value):
+        try:
+            del self._store[value.lower().replace(" ", "")]
+        except KeyError:
+            pass
+
+    def copy(self):
+        return CaseAndSpaceInsensitiveSet(*self._store.values())
+
+    def __repr__(self):
+        return str(self._store)
+
+    def __eq__(self, other):
+        if isinstance(other, collections.MutableSet):
+            other = CaseAndSpaceInsensitiveSet(*other)
+        else:
+            return NotImplemented
+        # Compare insensitively
+        return set(self._store.keys()) == set(other._store.keys())

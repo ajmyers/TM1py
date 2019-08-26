@@ -13,7 +13,7 @@ TM1py.egg-info/SOURCES.txt
 TM1py.egg-info/top_level.txt
 build/lib/TM1py/__init__.py
 dist/TM1py-0.0.2.zip
-
+.DS_Store
 
 README.html
 Create Performance Cube.py
